@@ -7,6 +7,8 @@
 /// wrap it all in a module
 pub mod fastx {
     use std::collections::HashMap;
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
 
     /// Holds the sequence and its base-0 index in the original FASTA file.
     pub struct IndexedSequence {
@@ -116,7 +118,20 @@ pub mod fastx {
     }
 
     impl FastaRecords {
-        /// Creates a new `FastaRecords` object from the given map of sequence names to sequence objects.
+        /// Creates a new `FastaRecords` object from a FASTA file.
+        fn new(fasta_path: &str) -> Result<FastaRecords, String> {
+            let mut current_header = String::new();
+            let mut current_sequence = String::new();
+            let file = File::open(fasta_path)
+                .map_err( |error| error.to_string() )?;
+            for line in BufReader::new(file).lines() {
+                let line = line.map_err( |error| error.to_string() )?;
+                if line.starts_with('>') {
+                    current_header = line;
+                }
+            }
+            todo!()
+        }
     }
 }
 
