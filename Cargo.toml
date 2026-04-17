@@ -6,3 +6,6 @@ authors = ["Anthony Greenberg <info@bayesicresearch.org>"]
 license = "3BSD"
 
 [dependencies]
+
+[dev-dependencies]
+tempfile = "3"
