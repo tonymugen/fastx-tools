@@ -230,6 +230,23 @@ pub mod fastx {
             (FastxRecords { records_: subset, max_sequence_length_: current_max_length }, absent_names)
         }
 
+        /// Merge in a `FastxRecords` object.
+        ///
+        /// Any records also present in the current object are overwritten by new values.
+        ///
+        /// # Arguments
+        ///
+        /// * `from` - an object to merge
+        ///
+        /// # Returns
+        ///
+        /// Any errors.
+        ///
+        pub fn merge(&mut self, from: FastxRecords<T>) {
+            self.max_sequence_length_ = self.max_sequence_length_.max(from.max_sequence_length_);
+            self.records_.extend(from.records_);
+        }
+
         /// Save the records to a file.
         ///
         /// # Arguments
@@ -377,22 +394,48 @@ mod tests {
     use std::io::Write;
     use tempfile::NamedTempFile;
 
+    fn make_standard_fasta() -> NamedTempFile {
+        let mut tmp = NamedTempFile::new().unwrap();
+        writeln!(tmp, ">seq1").unwrap();
+        writeln!(tmp, "ACGTACGT").unwrap();
+        writeln!(tmp, ">seq2").unwrap();
+        writeln!(tmp, "TTGGCCAA").unwrap();
+        writeln!(tmp, ">seq3").unwrap();
+        writeln!(tmp, "GCGCGCGC").unwrap();
+        tmp
+    }
+
+    fn make_standard_fastq() -> NamedTempFile {
+        let mut tmp = NamedTempFile::new().unwrap();
+        writeln!(tmp, "@record1").unwrap();
+        writeln!(tmp, "ACGTACGTACGT").unwrap();
+        writeln!(tmp, "+").unwrap();
+        writeln!(tmp, "IIIIIIIIIIII").unwrap();
+        writeln!(tmp, "@record2").unwrap();
+        writeln!(tmp, "TTGGCCAATTGG").unwrap();
+        writeln!(tmp, "+").unwrap();
+        writeln!(tmp, "HHHHHHHHHHHH").unwrap();
+        writeln!(tmp, "@record3").unwrap();
+        writeln!(tmp, "GCGCGCGCGCGC").unwrap();
+        writeln!(tmp, "+").unwrap();
+        writeln!(tmp, "????????????").unwrap();
+        tmp
+    }
+
     // FastxRecords tests
-    const CORRECT_FASTA: &str = "tests/data/correct.fasta";
 
     #[test]
     fn test_fasta_records_new_loads_all_records() {
-        let records = read_fasta(CORRECT_FASTA).unwrap();
-        assert_eq!(records.num_records(), 18);
+        let fasta   = make_standard_fasta();
+        let records = read_fasta(fasta.path().to_str().unwrap()).unwrap();
+        assert_eq!(records.num_records(), 3);
     }
 
     #[test]
     fn test_fasta_records_by_name_returns_present_records() {
-        let records = read_fasta(CORRECT_FASTA).unwrap();
-        let names = vec![
-            ">B.FR.1983.IIIB_LAI.A04321".to_string(),
-            ">C.IN.1993.93IN101.AB023804".to_string(),
-        ];
+        let fasta   = make_standard_fasta();
+        let records = read_fasta(fasta.path().to_str().unwrap()).unwrap();
+        let names   = vec![">seq1".to_string(), ">seq2".to_string()];
         let (subset, absent) = records.records_by_name(names);
         assert_eq!(subset.num_records(), 2);
         assert!(absent.is_empty());
@@ -400,8 +443,9 @@ mod tests {
 
     #[test]
     fn test_fasta_records_by_name_single_record() {
-        let records          = read_fasta(CORRECT_FASTA).unwrap();
-        let names            = vec![">B.US.1997.ARES2.AB078005".to_string()];
+        let fasta            = make_standard_fasta();
+        let records          = read_fasta(fasta.path().to_str().unwrap()).unwrap();
+        let names            = vec![">seq1".to_string()];
         let (subset, absent) = records.records_by_name(names);
         assert_eq!(subset.num_records(), 1);
         assert!(absent.is_empty());
@@ -409,7 +453,8 @@ mod tests {
 
     #[test]
     fn test_fasta_records_by_name_absent_names_reported() {
-        let records          = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta            = make_standard_fasta();
+        let records          = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let names            = vec!["not_a_real_record".to_string()];
         let (subset, absent) = records.records_by_name(names);
         assert_eq!(subset.num_records(), 0);
@@ -418,7 +463,8 @@ mod tests {
 
     #[test]
     fn test_fasta_records_by_name_empty_input_returns_empty() {
-        let records          = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta            = make_standard_fasta();
+        let records          = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let (subset, absent) = records.records_by_name(vec![]);
         assert_eq!(subset.num_records(), 0);
         assert!(absent.is_empty());
@@ -426,11 +472,9 @@ mod tests {
 
     #[test]
     fn test_fasta_records_by_name_duplicate_present_name_deduplicated() {
-        let records = read_fasta(CORRECT_FASTA).unwrap();
-        let names   = vec![
-            ">B.FR.1983.IIIB_LAI.A04321".to_string(),
-            ">B.FR.1983.IIIB_LAI.A04321".to_string(),
-        ];
+        let fasta   = make_standard_fasta();
+        let records = read_fasta(fasta.path().to_str().unwrap()).unwrap();
+        let names   = vec![">seq1".to_string(), ">seq1".to_string()];
         let (subset, absent) = records.records_by_name(names);
         assert_eq!(subset.num_records(), 1);
         assert!(absent.is_empty());
@@ -438,7 +482,8 @@ mod tests {
 
     #[test]
     fn test_fasta_records_by_name_duplicate_absent_name_repeated_in_output() {
-        let records          = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta            = make_standard_fasta();
+        let records          = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let names            = vec!["missing".to_string(), "missing".to_string()];
         let (subset, absent) = records.records_by_name(names);
         assert_eq!(subset.num_records(), 0);
@@ -511,55 +556,62 @@ mod tests {
     // FastxRecords::subsequences tests
     #[test]
     fn test_fasta_records_subsequences_preserves_record_count() {
-        let records = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta   = make_standard_fasta();
+        let records = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let sub     = records.subsequences(0, 10);
         assert_eq!(sub.num_records(), records.num_records());
     }
 
     #[test]
     fn test_fasta_records_subsequences_within_bounds() {
-        let records     = read_fasta(CORRECT_FASTA).unwrap();
-        let (first, _)  = records.records_by_name(vec![">B.FR.1983.IIIB_LAI.A04321".to_string()]);
+        let fasta       = make_standard_fasta();
+        let records     = read_fasta(fasta.path().to_str().unwrap()).unwrap();
+        let (first, _)  = records.records_by_name(vec![">seq1".to_string()]);
         let sub         = first.subsequences(2, 5);
-        let (result, _) = sub.records_by_name(vec![">B.FR.1983.IIIB_LAI.A04321".to_string()]);
+        let (result, _) = sub.records_by_name(vec![">seq1".to_string()]);
         assert_eq!(result.num_records(), 1);
     }
 
     #[test]
     fn test_fasta_records_subsequences_full_sequence_preserves_length() {
-        let records = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta   = make_standard_fasta();
+        let records = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let sub     = records.subsequences(0, usize::MAX);
-        assert_eq!(sub.num_records(), 18);
+        assert_eq!(sub.num_records(), 3);
     }
 
     #[test]
     fn test_fasta_records_subsequences_start_equals_end_returns_empty_sequences() {
-        let records = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta   = make_standard_fasta();
+        let records = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let sub     = records.subsequences(5, 5);
-        assert_eq!(sub.num_records(), 18);
+        assert_eq!(sub.num_records(), 3);
     }
 
     #[test]
     fn test_fasta_records_subsequences_start_beyond_end_returns_empty_sequences() {
-        let records = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta   = make_standard_fasta();
+        let records = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let sub     = records.subsequences(10, 2);
-        assert_eq!(sub.num_records(), 18);
+        assert_eq!(sub.num_records(), 3);
     }
 
     #[test]
     fn test_fasta_records_subsequences_start_beyond_sequence_returns_empty_sequences() {
-        let records = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta   = make_standard_fasta();
+        let records = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let sub     = records.subsequences(usize::MAX - 1, usize::MAX);
-        assert_eq!(sub.num_records(), 18);
+        assert_eq!(sub.num_records(), 3);
     }
 
     // FastxRecords::subsequences_by_name tests
     #[test]
     fn test_subsequences_by_name_returns_present_records() {
-        let records      = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta        = make_standard_fasta();
+        let records      = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
-            NameWithRange { name: ">B.FR.1983.IIIB_LAI.A04321".to_string(), start: 0, end: 10 },
-            NameWithRange { name: ">C.IN.1993.93IN101.AB023804".to_string(), start: 0, end: 10 },
+            NameWithRange { name: ">seq1".to_string(), start: 0, end: 5 },
+            NameWithRange { name: ">seq2".to_string(), start: 0, end: 5 },
         ];
         let (subset, absent) = records.subsequences_by_name(names_ranges);
         assert_eq!(subset.num_records(), 2);
@@ -568,9 +620,10 @@ mod tests {
 
     #[test]
     fn test_subsequences_by_name_single_record() {
-        let records      = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta        = make_standard_fasta();
+        let records      = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
-            NameWithRange { name: ">B.US.1997.ARES2.AB078005".to_string(), start: 2, end: 7 },
+            NameWithRange { name: ">seq1".to_string(), start: 2, end: 7 },
         ];
         let (subset, absent) = records.subsequences_by_name(names_ranges);
         assert_eq!(subset.num_records(), 1);
@@ -579,7 +632,8 @@ mod tests {
 
     #[test]
     fn test_subsequences_by_name_absent_names_reported() {
-        let records = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta        = make_standard_fasta();
+        let records      = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
             NameWithRange { name: "not_a_real_record".to_string(), start: 0, end: 5 },
         ];
@@ -590,7 +644,8 @@ mod tests {
 
     #[test]
     fn test_subsequences_by_name_multiple_absent_names_separated_by_newline() {
-        let records      = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta        = make_standard_fasta();
+        let records      = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
             NameWithRange { name: "missing_one".to_string(), start: 0, end: 5 },
             NameWithRange { name: "missing_two".to_string(), start: 0, end: 5 },
@@ -601,9 +656,10 @@ mod tests {
 
     #[test]
     fn test_subsequences_by_name_mixed_present_and_absent() {
-        let records      = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta        = make_standard_fasta();
+        let records      = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
-            NameWithRange { name: ">B.FR.1983.IIIB_LAI.A04321".to_string(), start: 0, end: 5 },
+            NameWithRange { name: ">seq1".to_string(), start: 0, end: 5 },
             NameWithRange { name: "missing_record".to_string(), start: 0, end: 5 },
         ];
         let (subset, absent) = records.subsequences_by_name(names_ranges);
@@ -613,7 +669,8 @@ mod tests {
 
     #[test]
     fn test_subsequences_by_name_empty_input_returns_empty() {
-        let records          = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta            = make_standard_fasta();
+        let records          = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let (subset, absent) = records.subsequences_by_name(vec![]);
         assert_eq!(subset.num_records(), 0);
         assert!(absent.is_empty());
@@ -621,9 +678,10 @@ mod tests {
 
     #[test]
     fn test_subsequences_by_name_start_equals_end() {
-        let records      = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta        = make_standard_fasta();
+        let records      = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
-            NameWithRange { name: ">B.FR.1983.IIIB_LAI.A04321".to_string(), start: 5, end: 5 },
+            NameWithRange { name: ">seq1".to_string(), start: 5, end: 5 },
         ];
         let (subset, absent) = records.subsequences_by_name(names_ranges);
         assert_eq!(subset.num_records(), 1);
@@ -632,9 +690,10 @@ mod tests {
 
     #[test]
     fn test_subsequences_by_name_start_beyond_end() {
-        let records      = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta        = make_standard_fasta();
+        let records      = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
-            NameWithRange { name: ">B.FR.1983.IIIB_LAI.A04321".to_string(), start: 10, end: 2 },
+            NameWithRange { name: ">seq1".to_string(), start: 10, end: 2 },
         ];
         let (subset, absent) = records.subsequences_by_name(names_ranges);
         assert_eq!(subset.num_records(), 1);
@@ -643,9 +702,10 @@ mod tests {
 
     #[test]
     fn test_subsequences_by_name_start_beyond_sequence() {
-        let records      = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta        = make_standard_fasta();
+        let records      = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
-            NameWithRange { name: ">B.FR.1983.IIIB_LAI.A04321".to_string(), start: usize::MAX - 1, end: usize::MAX },
+            NameWithRange { name: ">seq1".to_string(), start: usize::MAX - 1, end: usize::MAX },
         ];
         let (subset, absent) = records.subsequences_by_name(names_ranges);
         assert_eq!(subset.num_records(), 1);
@@ -655,8 +715,9 @@ mod tests {
     // FastxRecords::save_records and save_sorted_records tests
     #[test]
     fn test_fasta_save_records_roundtrip() {
-        let records = read_fasta(CORRECT_FASTA).unwrap();
-        let tmp = NamedTempFile::new().unwrap();
+        let fasta   = make_standard_fasta();
+        let records = read_fasta(fasta.path().to_str().unwrap()).unwrap();
+        let tmp     = NamedTempFile::new().unwrap();
         records.save_records(tmp.path().to_str().unwrap()).unwrap();
         let saved = read_fasta(tmp.path().to_str().unwrap()).unwrap();
         assert_eq!(saved.num_records(), records.num_records());
@@ -664,7 +725,8 @@ mod tests {
 
     #[test]
     fn test_fasta_save_sorted_records_roundtrip() {
-        let records = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta   = make_standard_fasta();
+        let records = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let tmp     = NamedTempFile::new().unwrap();
         records.save_sorted_records(tmp.path().to_str().unwrap()).unwrap();
         let saved = read_fasta(tmp.path().to_str().unwrap()).unwrap();
@@ -689,17 +751,18 @@ mod tests {
     }
 
     // FastqRecords tests
-    const CORRECT_FASTQ: &str = "tests/data/correct.fastq";
 
     #[test]
     fn test_fastq_records_new_loads_all_records() {
-        let records = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq   = make_standard_fastq();
+        let records = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         assert_eq!(records.num_records(), 3);
     }
 
     #[test]
     fn test_fastq_records_by_name_returns_present_records() {
-        let records          = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq            = make_standard_fastq();
+        let records          = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let names            = vec!["@record1".to_string(), "@record2".to_string()];
         let (subset, absent) = records.records_by_name(names);
         assert_eq!(subset.num_records(), 2);
@@ -708,7 +771,8 @@ mod tests {
 
     #[test]
     fn test_fastq_records_by_name_single_record() {
-        let records          = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq            = make_standard_fastq();
+        let records          = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let names            = vec!["@record3".to_string()];
         let (subset, absent) = records.records_by_name(names);
         assert_eq!(subset.num_records(), 1);
@@ -717,7 +781,8 @@ mod tests {
 
     #[test]
     fn test_fastq_records_by_name_absent_names_reported() {
-        let records          = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq            = make_standard_fastq();
+        let records          = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let names            = vec!["not_a_real_record".to_string()];
         let (subset, absent) = records.records_by_name(names);
         assert_eq!(subset.num_records(), 0);
@@ -726,7 +791,8 @@ mod tests {
 
     #[test]
     fn test_fastq_records_by_name_empty_input_returns_empty() {
-        let records          = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq            = make_standard_fastq();
+        let records          = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let (subset, absent) = records.records_by_name(vec![]);
         assert_eq!(subset.num_records(), 0);
         assert!(absent.is_empty());
@@ -734,7 +800,8 @@ mod tests {
 
     #[test]
     fn test_fastq_records_by_name_duplicate_present_name_deduplicated() {
-        let records          = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq            = make_standard_fastq();
+        let records          = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let names            = vec!["@record1".to_string(), "@record1".to_string()];
         let (subset, absent) = records.records_by_name(names);
         assert_eq!(subset.num_records(), 1);
@@ -743,7 +810,8 @@ mod tests {
 
     #[test]
     fn test_fastq_records_by_name_duplicate_absent_name_repeated_in_output() {
-        let records          = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq            = make_standard_fastq();
+        let records          = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let names            = vec!["missing".to_string(), "missing".to_string()];
         let (subset, absent) = records.records_by_name(names);
         assert_eq!(subset.num_records(), 0);
@@ -845,14 +913,16 @@ mod tests {
     // FastqRecords::subsequences tests
     #[test]
     fn test_fastq_records_subsequences_preserves_record_count() {
-        let records = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq   = make_standard_fastq();
+        let records = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let sub     = records.subsequences(0, 5);
         assert_eq!(sub.num_records(), records.num_records());
     }
 
     #[test]
     fn test_fastq_records_subsequences_within_bounds() {
-        let records     = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq       = make_standard_fastq();
+        let records     = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let (first, _)  = records.records_by_name(vec!["@record1".to_string()]);
         let sub         = first.subsequences(2, 5);
         let (result, _) = sub.records_by_name(vec!["@record1".to_string()]);
@@ -861,28 +931,32 @@ mod tests {
 
     #[test]
     fn test_fastq_records_subsequences_full_sequence_preserves_count() {
-        let records = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq   = make_standard_fastq();
+        let records = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let sub     = records.subsequences(0, usize::MAX);
         assert_eq!(sub.num_records(), 3);
     }
 
     #[test]
     fn test_fastq_records_subsequences_start_equals_end_returns_empty_sequences() {
-        let records = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq   = make_standard_fastq();
+        let records = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let sub     = records.subsequences(5, 5);
         assert_eq!(sub.num_records(), 3);
     }
 
     #[test]
     fn test_fastq_records_subsequences_start_beyond_end_returns_empty_sequences() {
-        let records = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq   = make_standard_fastq();
+        let records = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let sub     = records.subsequences(10, 2);
         assert_eq!(sub.num_records(), 3);
     }
 
     #[test]
     fn test_fastq_records_subsequences_start_beyond_sequence_returns_empty_sequences() {
-        let records = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq   = make_standard_fastq();
+        let records = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let sub     = records.subsequences(usize::MAX - 1, usize::MAX);
         assert_eq!(sub.num_records(), 3);
     }
@@ -890,7 +964,8 @@ mod tests {
     // FastqRecords::subsequences_by_name tests
     #[test]
     fn test_fastq_subsequences_by_name_returns_present_records() {
-        let records      = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq        = make_standard_fastq();
+        let records      = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
             NameWithRange { name: "@record1".to_string(), start: 0, end: 5 },
             NameWithRange { name: "@record2".to_string(), start: 0, end: 5 },
@@ -902,7 +977,8 @@ mod tests {
 
     #[test]
     fn test_fastq_subsequences_by_name_single_record() {
-        let records      = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq        = make_standard_fastq();
+        let records      = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
             NameWithRange { name: "@record3".to_string(), start: 2, end: 7 },
         ];
@@ -913,7 +989,8 @@ mod tests {
 
     #[test]
     fn test_fastq_subsequences_by_name_absent_names_reported() {
-        let records      = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq        = make_standard_fastq();
+        let records      = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
             NameWithRange { name: "not_a_real_record".to_string(), start: 0, end: 5 },
         ];
@@ -924,7 +1001,8 @@ mod tests {
 
     #[test]
     fn test_fastq_subsequences_by_name_multiple_absent_names_separated_by_newline() {
-        let records      = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq        = make_standard_fastq();
+        let records      = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
             NameWithRange { name: "missing_one".to_string(), start: 0, end: 5 },
             NameWithRange { name: "missing_two".to_string(), start: 0, end: 5 },
@@ -935,7 +1013,8 @@ mod tests {
 
     #[test]
     fn test_fastq_subsequences_by_name_mixed_present_and_absent() {
-        let records      = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq        = make_standard_fastq();
+        let records      = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
             NameWithRange { name: "@record1".to_string(), start: 0, end: 5 },
             NameWithRange { name: "missing_record".to_string(), start: 0, end: 5 },
@@ -947,7 +1026,8 @@ mod tests {
 
     #[test]
     fn test_fastq_subsequences_by_name_empty_input_returns_empty() {
-        let records          = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq            = make_standard_fastq();
+        let records          = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let (subset, absent) = records.subsequences_by_name(vec![]);
         assert_eq!(subset.num_records(), 0);
         assert!(absent.is_empty());
@@ -955,7 +1035,8 @@ mod tests {
 
     #[test]
     fn test_fastq_subsequences_by_name_start_equals_end() {
-        let records      = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq        = make_standard_fastq();
+        let records      = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
             NameWithRange { name: "@record1".to_string(), start: 5, end: 5 },
         ];
@@ -966,7 +1047,8 @@ mod tests {
 
     #[test]
     fn test_fastq_subsequences_by_name_start_beyond_end() {
-        let records      = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq        = make_standard_fastq();
+        let records      = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
             NameWithRange { name: "@record1".to_string(), start: 10, end: 2 },
         ];
@@ -977,7 +1059,8 @@ mod tests {
 
     #[test]
     fn test_fastq_subsequences_by_name_start_beyond_sequence() {
-        let records      = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq        = make_standard_fastq();
+        let records      = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let names_ranges = vec![
             NameWithRange { name: "@record1".to_string(), start: usize::MAX - 1, end: usize::MAX },
         ];
@@ -989,7 +1072,8 @@ mod tests {
     // FastqRecords::save_records and save_sorted_records tests
     #[test]
     fn test_fastq_save_records_roundtrip() {
-        let records = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq   = make_standard_fastq();
+        let records = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let tmp     = NamedTempFile::new().unwrap();
         records.save_records(tmp.path().to_str().unwrap()).unwrap();
         let saved = read_fastq(tmp.path().to_str().unwrap()).unwrap();
@@ -998,7 +1082,8 @@ mod tests {
 
     #[test]
     fn test_fastq_save_sorted_records_roundtrip() {
-        let records = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq   = make_standard_fastq();
+        let records = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let tmp     = NamedTempFile::new().unwrap();
         records.save_sorted_records(tmp.path().to_str().unwrap()).unwrap();
         let saved = read_fastq(tmp.path().to_str().unwrap()).unwrap();
@@ -1007,12 +1092,101 @@ mod tests {
 
     #[test]
     fn test_fastq_save_sorted_records_order() {
-        let records = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq   = make_standard_fastq();
+        let records = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         let tmp     = NamedTempFile::new().unwrap();
         records.save_sorted_records(tmp.path().to_str().unwrap()).unwrap();
         let content = std::fs::read_to_string(tmp.path()).unwrap();
         let headers: Vec<&str> = content.lines().filter( |l| l.starts_with('@') ).collect();
         assert_eq!(headers, vec!["@record1", "@record2", "@record3"]);
+    }
+
+    // FastxRecords::merge tests
+    #[test]
+    fn test_merge_disjoint_sets_combines_all_records() {
+        let mut tmp1 = NamedTempFile::new().unwrap();
+        writeln!(tmp1, ">r1").unwrap();
+        writeln!(tmp1, "AAAA").unwrap();
+        let mut tmp2 = NamedTempFile::new().unwrap();
+        writeln!(tmp2, ">r2").unwrap();
+        writeln!(tmp2, "CCCC").unwrap();
+        let mut a = read_fasta(tmp1.path().to_str().unwrap()).unwrap();
+        let b     = read_fasta(tmp2.path().to_str().unwrap()).unwrap();
+        a.merge(b);
+        assert_eq!(a.num_records(), 2);
+    }
+
+    #[test]
+    fn test_merge_duplicate_key_overwrites_existing_record() {
+        let mut tmp1 = NamedTempFile::new().unwrap();
+        writeln!(tmp1, ">r1").unwrap();
+        writeln!(tmp1, "AAAA").unwrap();
+        let mut tmp2 = NamedTempFile::new().unwrap();
+        writeln!(tmp2, ">r1").unwrap();
+        writeln!(tmp2, "CCCC").unwrap();
+        let mut a = read_fasta(tmp1.path().to_str().unwrap()).unwrap();
+        let b     = read_fasta(tmp2.path().to_str().unwrap()).unwrap();
+        a.merge(b);
+        assert_eq!(a.num_records(), 1);
+        let out = NamedTempFile::new().unwrap();
+        a.save_records(out.path().to_str().unwrap()).unwrap();
+        let content = std::fs::read_to_string(out.path()).unwrap();
+        assert!(content.contains("CCCC"));
+        assert!(!content.contains("AAAA"));
+    }
+
+    #[test]
+    fn test_merge_into_empty_collection() {
+        let mut tmp1 = NamedTempFile::new().unwrap();
+        writeln!(tmp1, ">r1").unwrap();
+        writeln!(tmp1, "AAAA").unwrap();
+        let mut tmp2 = NamedTempFile::new().unwrap();
+        writeln!(tmp2, ">r2").unwrap();
+        writeln!(tmp2, "CCCC").unwrap();
+        let a        = read_fasta(tmp1.path().to_str().unwrap()).unwrap();
+        let b        = read_fasta(tmp2.path().to_str().unwrap()).unwrap();
+        let (mut empty, _) = a.records_by_name(vec![]);
+        empty.merge(b);
+        assert_eq!(empty.num_records(), 1);
+    }
+
+    #[test]
+    fn test_merge_empty_collection_into_existing() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        writeln!(tmp, ">r1").unwrap();
+        writeln!(tmp, "AAAA").unwrap();
+        let mut a        = read_fasta(tmp.path().to_str().unwrap()).unwrap();
+        let (empty, _)   = a.records_by_name(vec![]);
+        a.merge(empty);
+        assert_eq!(a.num_records(), 1);
+    }
+
+    #[test]
+    fn test_merge_updates_max_length_when_incoming_is_longer() {
+        let mut tmp1 = NamedTempFile::new().unwrap();
+        writeln!(tmp1, ">r1").unwrap();
+        writeln!(tmp1, "AAAA").unwrap();
+        let mut tmp2 = NamedTempFile::new().unwrap();
+        writeln!(tmp2, ">r2").unwrap();
+        writeln!(tmp2, "CCCCCCCC").unwrap();
+        let mut a = read_fasta(tmp1.path().to_str().unwrap()).unwrap();
+        let b     = read_fasta(tmp2.path().to_str().unwrap()).unwrap();
+        a.merge(b);
+        assert_eq!(a.get_max_length(), 8);
+    }
+
+    #[test]
+    fn test_merge_max_length_unchanged_when_incoming_is_shorter() {
+        let mut tmp1 = NamedTempFile::new().unwrap();
+        writeln!(tmp1, ">r1").unwrap();
+        writeln!(tmp1, "CCCCCCCC").unwrap();
+        let mut tmp2 = NamedTempFile::new().unwrap();
+        writeln!(tmp2, ">r2").unwrap();
+        writeln!(tmp2, "AAAA").unwrap();
+        let mut a = read_fasta(tmp1.path().to_str().unwrap()).unwrap();
+        let b     = read_fasta(tmp2.path().to_str().unwrap()).unwrap();
+        a.merge(b);
+        assert_eq!(a.get_max_length(), 8);
     }
 
     // get_max_length tests
@@ -1031,7 +1205,8 @@ mod tests {
 
     #[test]
     fn test_fastq_get_max_length_after_read() {
-        let records = read_fastq(CORRECT_FASTQ).unwrap();
+        let fastq = make_standard_fastq();
+        let records = read_fastq(fastq.path().to_str().unwrap()).unwrap();
         assert_eq!(records.get_max_length(), 12);
     }
 
@@ -1084,7 +1259,8 @@ mod tests {
 
     #[test]
     fn test_fasta_get_max_length_empty_subset_is_zero() {
-        let records     = read_fasta(CORRECT_FASTA).unwrap();
+        let fasta       = make_standard_fasta();
+        let records     = read_fasta(fasta.path().to_str().unwrap()).unwrap();
         let (subset, _) = records.records_by_name(vec![]);
         assert_eq!(subset.get_max_length(), 0);
     }

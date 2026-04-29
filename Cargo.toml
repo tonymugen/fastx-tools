@@ -8,4 +8,5 @@ license = "3BSD"
 [dependencies]
 
 [dev-dependencies]
-tempfile = "3"
+assert_cmd = "2"
+tempfile   = "3"
