@@ -20,9 +20,9 @@ use fastx_tools::fastx;
 ///
 pub fn parse_name_file(name_file: &str) -> Result<Vec<fastx::NameWithRange>, String> {
     let mut names_with_ranges: Vec<fastx::NameWithRange> = Vec::new();
-    let file = File::open(name_file).map_err(|e| e.to_string())?;
+    let file = File::open(name_file).map_err( |error| error.to_string() )?;
     for line in BufReader::new(file).lines() {
-        let line = line.map_err(|error| error.to_string())?;
+        let line = line.map_err( |error| error.to_string() )?;
         if line.starts_with('#') {
             continue;
         }
@@ -69,10 +69,10 @@ pub fn parse_name_file(name_file: &str) -> Result<Vec<fastx::NameWithRange>, Str
 ///
 pub fn split_subset_list(records: Vec<fastx::NameWithRange>) -> (Vec<String>, Vec<fastx::NameWithRange>) {
     let (with_range, name_only): (Vec<_>, Vec<_>) = records.into_iter()
-        .partition(|r| r.start > 0 || r.end > 0);
-    let names = name_only.into_iter().map(|r| r.name).collect();
+        .partition(|record| record.start > 0 || record.end > 0);
+    let names  = name_only.into_iter().map(|record| record.name).collect();
     let ranges = with_range.into_iter()
-        .map(|r| fastx::NameWithRange { start: r.start - 1, ..r })
+        .map(|record| fastx::NameWithRange { start: record.start - 1, ..record })
         .collect();
     (names, ranges)
 }
@@ -88,8 +88,8 @@ pub struct ParsedCLIFlags {
 impl ParsedCLIFlags {
     fn parse_flag_pairs(args: &[String], bool_flags: &[&str]) -> Result<HashMap<String, String>, String> {
         let mut flags_and_fields: HashMap<String, String> = HashMap::new();
-        let mut current_flag_name = String::new();
-        let mut current_flag_value = String::new();
+        let mut current_flag_name                         = String::new();
+        let mut current_flag_value                        = String::new();
         for field in args {
             if field.starts_with("--") {
                 if !current_flag_name.is_empty() {
@@ -102,7 +102,7 @@ impl ParsedCLIFlags {
             if current_flag_name.is_empty() {
                 return Err( format!("Got value {field} before any flag name") );
             }
-            if bool_flags.contains(&current_flag_name.as_str()) {
+            if bool_flags.contains( &current_flag_name.as_str() ) {
                 return Err( format!("{} takes no value, got: {field}", current_flag_name) );
             }
             if !current_flag_value.is_empty() {
@@ -222,7 +222,7 @@ impl ParsedCLIFlags {
     /// The flag's string value, or an error if the flag was not provided.
     pub fn get_string_value(&self, flag: &str) -> Result<&str, String> {
         self.string_values_.get(flag)
-            .map( |s| s.as_str() )
+            .map( |value| value.as_str() )
             .ok_or_else( || format!("{flag} not found") )
     }
 
@@ -281,7 +281,7 @@ fn run<T: fastx::FastxRecord>(input_records: fastx::FastxRecords<T>, cli_args: &
     }
     if has_subset_file {
         let records_to_save = parse_name_file(&subset_file_name)
-            .map_err(|e| format!("Error parsing the subset file: {e}"))?;
+            .map_err( |error| format!("Error parsing the subset file: {error}") )?;
         let mut has_start_flag: bool = true;
         let mut has_end_flag: bool   = true;
         let subsequence_start        = match cli_args.get_int_value("--start") {
@@ -305,8 +305,8 @@ fn run<T: fastx::FastxRecord>(input_records: fastx::FastxRecords<T>, cli_args: &
             full_sequence_subset.merge(subsequence_subset);
             return save(full_sequence_subset);
         }
-        subsequence_end = subsequence_end.min( input_records.get_max_length() );
-        let subset_names: Vec<String> = records_to_save.into_iter().map(|r| r.name).collect();
+        subsequence_end                   = subsequence_end.min( input_records.get_max_length() );
+        let subset_names: Vec<String>     = records_to_save.into_iter().map(|r| r.name).collect();
         let (record_subset, absent_names) = input_records.records_by_name(subset_names);
         if !absent_names.is_empty() {
             eprintln!("WARNING: Some records were not found in the input file:\n{absent_names}");
@@ -359,11 +359,11 @@ fn main() {
 
     let result = match data_type {
         "fasta" => fastx::read_fasta(input_file)
-            .map_err(|e| format!("Error reading input file: {e}"))
-            .and_then(|records| run(records, &cli_args)),
+            .map_err( |error| format!("Error reading input file: {error}") )
+            .and_then( |records| run(records, &cli_args) ),
         "fastq" => fastx::read_fastq(input_file)
-            .map_err(|e| format!("Error reading input file: {e}"))
-            .and_then(|records| run(records, &cli_args)),
+            .map_err( |error| format!("Error reading input file: {error}") )
+            .and_then( |records| run(records, &cli_args) ),
         _ => unreachable!()
     };
     if let Err(error) = result {
@@ -393,13 +393,13 @@ mod tests {
     #[test]
     fn test_new_no_arguments_returns_error() {
         let result = ParsedCLIFlags::new(vec!["prog".to_string()]);
-        assert!(result.unwrap_err().contains("No command line arguments"));
+        assert!( result.unwrap_err().contains("No command line arguments") );
     }
 
     #[test]
     fn test_new_value_before_flag_returns_error() {
         let result = ParsedCLIFlags::new(vec!["prog".to_string(), "orphan".to_string()]);
-        assert!(result.unwrap_err().contains("before any flag name"));
+        assert!( result.unwrap_err().contains("before any flag name") );
     }
 
     #[test]
@@ -408,14 +408,14 @@ mod tests {
             "prog".to_string(),
             "--input-fx-file".to_string(), "a.fasta".to_string(), "b.fasta".to_string(),
         ]);
-        assert!(result.unwrap_err().contains("got multiple values"));
+        assert!( result.unwrap_err().contains("got multiple values") );
     }
 
     #[test]
     fn test_new_unknown_flag_returns_error() {
         let mut args = valid_args();
         args.extend(["--unknown".to_string(), "val".to_string()]);
-        assert!(ParsedCLIFlags::new(args).unwrap_err().contains("Unknown flag"));
+        assert!( ParsedCLIFlags::new(args).unwrap_err().contains("Unknown flag") );
     }
 
     #[test]
@@ -425,7 +425,7 @@ mod tests {
             "--output-fx-file".to_string(), "out.fasta".to_string(),
             "--file-type".to_string(), "fasta".to_string(),
         ]);
-        assert!(result.unwrap_err().contains("--input-fx-file"));
+        assert!( result.unwrap_err().contains("--input-fx-file") );
     }
 
     #[test]
@@ -435,8 +435,8 @@ mod tests {
             "--file-type".to_string(), "fasta".to_string(),
         ]);
         let err = result.unwrap_err();
-        assert!(err.contains("--input-fx-file"));
-        assert!(err.contains("--output-fx-file"));
+        assert!( err.contains("--input-fx-file") );
+        assert!( err.contains("--output-fx-file") );
     }
 
     #[test]
@@ -447,7 +447,7 @@ mod tests {
             "--output-fx-file".to_string(), "out.fasta".to_string(),
             "--file-type".to_string(), "fasta".to_string(),
         ]);
-        assert!(result.unwrap_err().contains("requires a value"));
+        assert!( result.unwrap_err().contains("requires a value") );
     }
 
     #[test]
@@ -458,7 +458,7 @@ mod tests {
             "--output-fx-file".to_string(), "out.fasta".to_string(),
             "--input-fx-file".to_string(), "in.fasta".to_string(),
         ];
-        assert!(ParsedCLIFlags::new(args).is_ok());
+        assert!( ParsedCLIFlags::new(args).is_ok() );
     }
 
     #[test]
@@ -469,19 +469,19 @@ mod tests {
             "--output-fx-file".to_string(), "out.fasta".to_string(),
             "--file-type".to_string(), "bam".to_string(),
         ]);
-        assert!(result.unwrap_err().contains("'fasta' or 'fastq'"));
+        assert!( result.unwrap_err().contains("'fasta' or 'fastq'") );
     }
 
     #[test]
     fn test_new_invalid_start_value_returns_error() {
         let mut args = valid_args();
         args.extend(["--start".to_string(), "notanumber".to_string()]);
-        assert!(ParsedCLIFlags::new(args).is_err());
+        assert!( ParsedCLIFlags::new(args).is_err() );
     }
 
     #[test]
     fn test_new_valid_minimal_fasta_args_succeeds() {
-        assert!(ParsedCLIFlags::new(valid_args()).is_ok());
+        assert!( ParsedCLIFlags::new( valid_args() ).is_ok() );
     }
 
     #[test]
@@ -492,7 +492,7 @@ mod tests {
             "--output-fx-file".to_string(), "out.fastq".to_string(),
             "--file-type".to_string(), "fastq".to_string(),
         ];
-        assert!(ParsedCLIFlags::new(args).is_ok());
+        assert!( ParsedCLIFlags::new(args).is_ok() );
     }
 
     #[test]
@@ -504,21 +504,21 @@ mod tests {
             "--end".to_string(), "100".to_string(),
             "--keep-record-order".to_string(),
         ]);
-        assert!(ParsedCLIFlags::new(args).is_ok());
+        assert!( ParsedCLIFlags::new(args).is_ok() );
     }
 
     // get_string_value tests
 
     #[test]
     fn test_get_string_value_present_flag_returns_value() {
-        let flags = ParsedCLIFlags::new(valid_args()).unwrap();
+        let flags = ParsedCLIFlags::new( valid_args() ).unwrap();
         assert_eq!(flags.get_string_value("--input-fx-file").unwrap(), "in.fasta");
     }
 
     #[test]
     fn test_get_string_value_absent_optional_flag_returns_error() {
-        let flags = ParsedCLIFlags::new(valid_args()).unwrap();
-        assert!(flags.get_string_value("--subset-file").is_err());
+        let flags = ParsedCLIFlags::new( valid_args() ).unwrap();
+        assert!( flags.get_string_value("--subset-file").is_err() );
     }
 
     #[test]
@@ -541,8 +541,8 @@ mod tests {
 
     #[test]
     fn test_get_int_value_absent_flag_returns_error() {
-        let flags = ParsedCLIFlags::new(valid_args()).unwrap();
-        assert!(flags.get_int_value("--start").is_err());
+        let flags = ParsedCLIFlags::new( valid_args() ).unwrap();
+        assert!( flags.get_int_value("--start").is_err() );
     }
 
     // get_bool_value tests
@@ -550,7 +550,7 @@ mod tests {
     #[test]
     fn test_get_bool_value_present_flag_returns_true() {
         let mut args = valid_args();
-        args.push("--keep-record-order".to_string());
+        args.push( "--keep-record-order".to_string() );
         let flags = ParsedCLIFlags::new(args).unwrap();
         assert_eq!(flags.get_bool_value("--keep-record-order").unwrap(), true);
     }
@@ -559,13 +559,13 @@ mod tests {
     fn test_new_bool_flag_with_value_returns_error() {
         let mut args = valid_args();
         args.extend(["--keep-record-order".to_string(), "false".to_string()]);
-        assert!(ParsedCLIFlags::new(args).unwrap_err().contains("takes no value"));
+        assert!( ParsedCLIFlags::new(args).unwrap_err().contains("takes no value") );
     }
 
     #[test]
     fn test_get_bool_value_absent_flag_returns_error() {
-        let flags = ParsedCLIFlags::new(valid_args()).unwrap();
-        assert!(flags.get_bool_value("--keep-record-order").is_err());
+        let flags = ParsedCLIFlags::new( valid_args() ).unwrap();
+        assert!( flags.get_bool_value("--keep-record-order").is_err() );
     }
 
     // parse_name_file tests
@@ -575,21 +575,21 @@ mod tests {
         let tmp  = NamedTempFile::new().unwrap();
         let path = tmp.path().to_str().unwrap().to_string();
         drop(tmp);
-        assert!(parse_name_file(&path).is_err());
+        assert!( parse_name_file(&path).is_err() );
     }
 
     #[test]
     fn test_parse_name_file_empty_file_returns_empty_vec() {
         let tmp    = NamedTempFile::new().unwrap();
-        let result = parse_name_file(tmp.path().to_str().unwrap()).unwrap();
-        assert!(result.is_empty());
+        let result = parse_name_file( tmp.path().to_str().unwrap() ).unwrap();
+        assert!( result.is_empty() );
     }
 
     #[test]
     fn test_parse_name_file_single_field_sets_zero_range() {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "seq1").unwrap();
-        let result = parse_name_file(tmp.path().to_str().unwrap()).unwrap();
+        let result = parse_name_file( tmp.path().to_str().unwrap() ).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "seq1");
         assert_eq!(result[0].start, 0);
@@ -600,7 +600,7 @@ mod tests {
     fn test_parse_name_file_three_fields_parses_range() {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "seq1 5 10").unwrap();
-        let result = parse_name_file(tmp.path().to_str().unwrap()).unwrap();
+        let result = parse_name_file( tmp.path().to_str().unwrap() ).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "seq1");
         assert_eq!(result[0].start, 5);
@@ -611,8 +611,8 @@ mod tests {
     fn test_parse_name_file_two_fields_returns_error() {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "seq1 5").unwrap();
-        assert!(parse_name_file(tmp.path().to_str().unwrap())
-            .unwrap_err().contains("Ambiguous start/end"));
+        assert!( parse_name_file( tmp.path().to_str().unwrap() )
+            .unwrap_err().contains("Ambiguous start/end") );
     }
 
     #[test]
@@ -620,7 +620,7 @@ mod tests {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "# this is a comment").unwrap();
         writeln!(tmp, "seq1").unwrap();
-        let result = parse_name_file(tmp.path().to_str().unwrap()).unwrap();
+        let result = parse_name_file( tmp.path().to_str().unwrap() ).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "seq1");
     }
@@ -631,7 +631,7 @@ mod tests {
         writeln!(tmp, "seq1").unwrap();
         writeln!(tmp, "").unwrap();
         writeln!(tmp, "seq2").unwrap();
-        let result = parse_name_file(tmp.path().to_str().unwrap()).unwrap();
+        let result = parse_name_file( tmp.path().to_str().unwrap() ).unwrap();
         assert_eq!(result.len(), 2);
     }
 
@@ -641,7 +641,7 @@ mod tests {
         writeln!(tmp, "seq1").unwrap();
         writeln!(tmp, "   ").unwrap();
         writeln!(tmp, "seq2").unwrap();
-        let result = parse_name_file(tmp.path().to_str().unwrap()).unwrap();
+        let result = parse_name_file( tmp.path().to_str().unwrap() ).unwrap();
         assert_eq!(result.len(), 2);
     }
 
@@ -649,7 +649,7 @@ mod tests {
     fn test_parse_name_file_extra_fields_ignored() {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "seq1 5 10 extra ignored").unwrap();
-        let result = parse_name_file(tmp.path().to_str().unwrap()).unwrap();
+        let result = parse_name_file( tmp.path().to_str().unwrap() ).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].start, 5);
         assert_eq!(result[0].end, 10);
@@ -659,32 +659,32 @@ mod tests {
     fn test_parse_name_file_invalid_start_returns_error() {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "seq1 abc 10").unwrap();
-        assert!(parse_name_file(tmp.path().to_str().unwrap())
-            .unwrap_err().contains("Invalid start"));
+        assert!( parse_name_file( tmp.path().to_str().unwrap() )
+            .unwrap_err().contains("Invalid start") );
     }
 
     #[test]
     fn test_parse_name_file_invalid_end_returns_error() {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "seq1 5 xyz").unwrap();
-        assert!(parse_name_file(tmp.path().to_str().unwrap())
-            .unwrap_err().contains("Invalid end"));
+        assert!( parse_name_file( tmp.path().to_str().unwrap() )
+            .unwrap_err().contains("Invalid end") );
     }
 
     #[test]
     fn test_parse_name_file_zero_start_returns_error() {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "seq1 0 10").unwrap();
-        assert!(parse_name_file(tmp.path().to_str().unwrap())
-            .unwrap_err().contains("Start value must be at least 1"));
+        assert!( parse_name_file( tmp.path().to_str().unwrap() )
+            .unwrap_err().contains("Start value must be at least 1") );
     }
 
     #[test]
     fn test_parse_name_file_zero_end_returns_error() {
         let mut tmp = NamedTempFile::new().unwrap();
         writeln!(tmp, "seq1 1 0").unwrap();
-        assert!(parse_name_file(tmp.path().to_str().unwrap())
-            .unwrap_err().contains("End value must be at least 1"));
+        assert!( parse_name_file( tmp.path().to_str().unwrap() )
+            .unwrap_err().contains("End value must be at least 1") );
     }
 
     #[test]
@@ -694,7 +694,7 @@ mod tests {
         writeln!(tmp, "seq1").unwrap();
         writeln!(tmp, "").unwrap();
         writeln!(tmp, "seq2 3 8").unwrap();
-        let result = parse_name_file(tmp.path().to_str().unwrap()).unwrap();
+        let result = parse_name_file( tmp.path().to_str().unwrap() ).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].name, "seq1");
         assert_eq!(result[0].start, 0);
@@ -717,23 +717,23 @@ mod tests {
     #[test]
     fn test_split_subset_list_empty_input() {
         let (names, ranges) = split_subset_list(vec![]);
-        assert!(names.is_empty());
-        assert!(ranges.is_empty());
+        assert!( names.is_empty() );
+        assert!( ranges.is_empty() );
     }
 
     #[test]
     fn test_split_subset_list_all_name_only() {
-        let input = vec![make_name_only("seq1"), make_name_only("seq2")];
+        let input           = vec![make_name_only("seq1"), make_name_only("seq2")];
         let (names, ranges) = split_subset_list(input);
         assert_eq!(names, vec!["seq1", "seq2"]);
-        assert!(ranges.is_empty());
+        assert!( ranges.is_empty() );
     }
 
     #[test]
     fn test_split_subset_list_all_with_range() {
-        let input = vec![make_with_range("seq1", 5, 10), make_with_range("seq2", 3, 8)];
+        let input           = vec![make_with_range("seq1", 5, 10), make_with_range("seq2", 3, 8)];
         let (names, ranges) = split_subset_list(input);
-        assert!(names.is_empty());
+        assert!( names.is_empty() );
         assert_eq!(ranges.len(), 2);
     }
 
@@ -752,21 +752,21 @@ mod tests {
 
     #[test]
     fn test_split_subset_list_start_converted_to_base0() {
-        let input = vec![make_with_range("seq1", 5, 10)];
+        let input       = vec![make_with_range("seq1", 5, 10)];
         let (_, ranges) = split_subset_list(input);
         assert_eq!(ranges[0].start, 4);
     }
 
     #[test]
     fn test_split_subset_list_end_unchanged() {
-        let input = vec![make_with_range("seq1", 5, 10)];
+        let input       = vec![make_with_range("seq1", 5, 10)];
         let (_, ranges) = split_subset_list(input);
         assert_eq!(ranges[0].end, 10);
     }
 
     #[test]
     fn test_split_subset_list_name_preserved_in_ranges() {
-        let input = vec![make_with_range("seq1", 5, 10)];
+        let input       = vec![make_with_range("seq1", 5, 10)];
         let (_, ranges) = split_subset_list(input);
         assert_eq!(ranges[0].name, "seq1");
     }
@@ -789,7 +789,7 @@ mod tests {
             "--output-fx-file".to_string(), output.to_string(),
             "--file-type".to_string(),      "fasta".to_string(),
         ];
-        args.extend(extra.iter().map(|s| s.to_string()));
+        args.extend( extra.iter().map( |element| element.to_string() ) );
         args
     }
 
@@ -799,12 +799,12 @@ mod tests {
     fn test_run_no_filters_copies_all_records() {
         let input  = make_fasta_tmp(&[(">r1", "AAAA"), (">r2", "CCCC")]);
         let output = NamedTempFile::new().unwrap();
-        let args   = ParsedCLIFlags::new(run_args(
+        let args   = ParsedCLIFlags::new( run_args(
             input.path().to_str().unwrap(), output.path().to_str().unwrap(), &[],
-        )).unwrap();
-        let records = fastx::read_fasta(input.path().to_str().unwrap()).unwrap();
-        assert!(run(records, &args).is_ok());
-        let saved = fastx::read_fasta(output.path().to_str().unwrap()).unwrap();
+        ) ).unwrap();
+        let records = fastx::read_fasta( input.path().to_str().unwrap() ).unwrap();
+        assert!( run(records, &args).is_ok() );
+        let saved = fastx::read_fasta( output.path().to_str().unwrap() ).unwrap();
         assert_eq!(saved.num_records(), 2);
     }
 
@@ -812,133 +812,133 @@ mod tests {
     fn test_run_global_start_and_end_applies_subsequence() {
         let input  = make_fasta_tmp(&[(">r1", "AAACCCGGG")]);
         let output = NamedTempFile::new().unwrap();
-        let args   = ParsedCLIFlags::new(run_args(
+        let args   = ParsedCLIFlags::new( run_args(
             input.path().to_str().unwrap(), output.path().to_str().unwrap(),
             &["--start", "4", "--end", "6"],
-        )).unwrap();
-        let records = fastx::read_fasta(input.path().to_str().unwrap()).unwrap();
-        assert!(run(records, &args).is_ok());
-        let content = std::fs::read_to_string(output.path()).unwrap();
+        ) ).unwrap();
+        let records = fastx::read_fasta( input.path().to_str().unwrap() ).unwrap();
+        assert!( run(records, &args).is_ok() );
+        let content = std::fs::read_to_string( output.path() ).unwrap();
         // 1-based inclusive [4,6] → 0-based [3,6) → "CCC"
-        assert!(content.contains("CCC"));
-        assert!(!content.contains("AAA"));
+        assert!(  content.contains("CCC") );
+        assert!( !content.contains("AAA") );
     }
 
     #[test]
     fn test_run_global_start_only_subsequences_to_end_of_sequence() {
         let input  = make_fasta_tmp(&[(">r1", "AAACCCGGG")]);
         let output = NamedTempFile::new().unwrap();
-        let args   = ParsedCLIFlags::new(run_args(
+        let args   = ParsedCLIFlags::new( run_args(
             input.path().to_str().unwrap(), output.path().to_str().unwrap(),
             &["--start", "4"],
-        )).unwrap();
-        let records = fastx::read_fasta(input.path().to_str().unwrap()).unwrap();
-        assert!(run(records, &args).is_ok());
-        let content = std::fs::read_to_string(output.path()).unwrap();
+        ) ).unwrap();
+        let records = fastx::read_fasta( input.path().to_str().unwrap() ).unwrap();
+        assert!( run(records, &args).is_ok() );
+        let content = std::fs::read_to_string( output.path() ).unwrap();
         // 1-based start 4 → 0-based 3, end clamped to sequence length 9 → "CCCGGG"
-        assert!(content.contains("CCCGGG"));
-        assert!(!content.contains("AAA"));
+        assert!(  content.contains("CCCGGG") );
+        assert!( !content.contains("AAA") );
     }
 
     #[test]
     fn test_run_global_end_only_subsequences_from_start_of_sequence() {
         let input  = make_fasta_tmp(&[(">r1", "AAACCCGGG")]);
         let output = NamedTempFile::new().unwrap();
-        let args   = ParsedCLIFlags::new(run_args(
+        let args   = ParsedCLIFlags::new( run_args(
             input.path().to_str().unwrap(), output.path().to_str().unwrap(),
             &["--end", "3"],
-        )).unwrap();
-        let records = fastx::read_fasta(input.path().to_str().unwrap()).unwrap();
-        assert!(run(records, &args).is_ok());
-        let content = std::fs::read_to_string(output.path()).unwrap();
+        ) ).unwrap();
+        let records = fastx::read_fasta( input.path().to_str().unwrap() ).unwrap();
+        assert!( run(records, &args).is_ok() );
+        let content = std::fs::read_to_string( output.path() ).unwrap();
         // 1-based end 3 = 0-based exclusive 3 → "AAA"
-        assert!(content.contains("AAA"));
-        assert!(!content.contains("CCC"));
+        assert!(  content.contains("AAA") );
+        assert!( !content.contains("CCC") );
     }
 
     #[test]
     fn test_run_subset_file_name_only_saves_named_records() {
-        let input  = make_fasta_tmp(&[(">r1", "AAAA"), (">r2", "CCCC"), (">r3", "GGGG")]);
-        let output = NamedTempFile::new().unwrap();
+        let input      = make_fasta_tmp(&[(">r1", "AAAA"), (">r2", "CCCC"), (">r3", "GGGG")]);
+        let output     = NamedTempFile::new().unwrap();
         let mut subset = NamedTempFile::new().unwrap();
         writeln!(subset, ">r1").unwrap();
         writeln!(subset, ">r3").unwrap();
-        let args = ParsedCLIFlags::new(run_args(
+        let args = ParsedCLIFlags::new( run_args(
             input.path().to_str().unwrap(), output.path().to_str().unwrap(),
             &["--subset-file", subset.path().to_str().unwrap()],
-        )).unwrap();
-        let records = fastx::read_fasta(input.path().to_str().unwrap()).unwrap();
-        assert!(run(records, &args).is_ok());
-        let saved = fastx::read_fasta(output.path().to_str().unwrap()).unwrap();
+        ) ).unwrap();
+        let records = fastx::read_fasta( input.path().to_str().unwrap() ).unwrap();
+        assert!( run(records, &args).is_ok() );
+        let saved = fastx::read_fasta( output.path().to_str().unwrap() ).unwrap();
         assert_eq!(saved.num_records(), 2);
     }
 
     #[test]
     fn test_run_subset_file_with_ranges_applies_per_record_subsequences() {
-        let input  = make_fasta_tmp(&[(">r1", "AAACCCGGG"), (">r2", "TTTGGGCCC")]);
-        let output = NamedTempFile::new().unwrap();
+        let input      = make_fasta_tmp(&[(">r1", "AAACCCGGG"), (">r2", "TTTGGGCCC")]);
+        let output     = NamedTempFile::new().unwrap();
         let mut subset = NamedTempFile::new().unwrap();
         writeln!(subset, ">r1 4 6").unwrap(); // 1-based [4,6] → 0-based [3,6) → "CCC"
         writeln!(subset, ">r2 1 3").unwrap(); // 1-based [1,3] → 0-based [0,3) → "TTT"
-        let args = ParsedCLIFlags::new(run_args(
+        let args = ParsedCLIFlags::new( run_args(
             input.path().to_str().unwrap(), output.path().to_str().unwrap(),
             &["--subset-file", subset.path().to_str().unwrap()],
-        )).unwrap();
-        let records = fastx::read_fasta(input.path().to_str().unwrap()).unwrap();
-        assert!(run(records, &args).is_ok());
-        let content = std::fs::read_to_string(output.path()).unwrap();
-        assert!(content.contains("CCC"));
-        assert!(content.contains("TTT"));
+        ) ).unwrap();
+        let records = fastx::read_fasta( input.path().to_str().unwrap() ).unwrap();
+        assert!( run(records, &args).is_ok() );
+        let content = std::fs::read_to_string( output.path() ).unwrap();
+        assert!( content.contains("CCC") );
+        assert!( content.contains("TTT") );
     }
 
     #[test]
     fn test_run_subset_file_global_start_end_overrides_file_ranges() {
-        let input  = make_fasta_tmp(&[(">r1", "AAACCCGGG"), (">r2", "TTTGGGCCC")]);
-        let output = NamedTempFile::new().unwrap();
+        let input      = make_fasta_tmp(&[(">r1", "AAACCCGGG"), (">r2", "TTTGGGCCC")]);
+        let output     = NamedTempFile::new().unwrap();
         let mut subset = NamedTempFile::new().unwrap();
         writeln!(subset, ">r1 1 3").unwrap(); // per-record range, should be overridden
         writeln!(subset, ">r2").unwrap();
-        let args = ParsedCLIFlags::new(run_args(
+        let args = ParsedCLIFlags::new( run_args(
             input.path().to_str().unwrap(), output.path().to_str().unwrap(),
             &["--subset-file", subset.path().to_str().unwrap(), "--start", "4", "--end", "6"],
-        )).unwrap();
-        let records = fastx::read_fasta(input.path().to_str().unwrap()).unwrap();
-        assert!(run(records, &args).is_ok());
-        let content = std::fs::read_to_string(output.path()).unwrap();
+        ) ).unwrap();
+        let records = fastx::read_fasta( input.path().to_str().unwrap() ).unwrap();
+        assert!( run(records, &args).is_ok() );
+        let content = std::fs::read_to_string( output.path() ).unwrap();
         // global [4,6] → r1: "CCC", r2: "GGG"; per-record [1,3] was overridden
-        assert!(content.contains("CCC"));
-        assert!(content.contains("GGG"));
-        assert!(!content.contains("AAA"));
+        assert!(  content.contains("CCC") );
+        assert!(  content.contains("GGG") );
+        assert!( !content.contains("AAA") );
     }
 
     #[test]
     fn test_run_keep_record_order_saves_in_source_order() {
         let input  = make_fasta_tmp(&[(">r1", "AAAA"), (">r2", "CCCC"), (">r3", "GGGG")]);
         let output = NamedTempFile::new().unwrap();
-        let args   = ParsedCLIFlags::new(run_args(
+        let args   = ParsedCLIFlags::new( run_args(
             input.path().to_str().unwrap(), output.path().to_str().unwrap(),
             &["--keep-record-order"],
-        )).unwrap();
-        let records = fastx::read_fasta(input.path().to_str().unwrap()).unwrap();
-        assert!(run(records, &args).is_ok());
-        let content = std::fs::read_to_string(output.path()).unwrap();
-        let headers: Vec<&str> = content.lines().filter(|l| l.starts_with('>')).collect();
+        ) ).unwrap();
+        let records = fastx::read_fasta( input.path().to_str().unwrap() ).unwrap();
+        assert!( run(records, &args).is_ok() );
+        let content            = std::fs::read_to_string( output.path() ).unwrap();
+        let headers: Vec<&str> = content.lines().filter( |line| line.starts_with('>') ).collect();
         assert_eq!(headers, vec![">r1", ">r2", ">r3"]);
     }
 
     #[test]
     fn test_run_absent_records_in_subset_file_returns_ok() {
-        let input  = make_fasta_tmp(&[(">r1", "AAAA")]);
-        let output = NamedTempFile::new().unwrap();
+        let input      = make_fasta_tmp(&[(">r1", "AAAA")]);
+        let output     = NamedTempFile::new().unwrap();
         let mut subset = NamedTempFile::new().unwrap();
         writeln!(subset, ">r1").unwrap();
         writeln!(subset, ">missing").unwrap();
-        let args = ParsedCLIFlags::new(run_args(
+        let args = ParsedCLIFlags::new( run_args(
             input.path().to_str().unwrap(), output.path().to_str().unwrap(),
             &["--subset-file", subset.path().to_str().unwrap()],
-        )).unwrap();
-        let records = fastx::read_fasta(input.path().to_str().unwrap()).unwrap();
-        assert!(run(records, &args).is_ok());
+        ) ).unwrap();
+        let records = fastx::read_fasta( input.path().to_str().unwrap() ).unwrap();
+        assert!( run(records, &args).is_ok() );
     }
 
     #[test]
@@ -946,21 +946,21 @@ mod tests {
         let input  = make_fasta_tmp(&[(">r1", "AAAA")]);
         let output = NamedTempFile::new().unwrap();
         let gone   = { let t = NamedTempFile::new().unwrap(); t.path().to_str().unwrap().to_string() };
-        let args   = ParsedCLIFlags::new(run_args(
+        let args   = ParsedCLIFlags::new( run_args(
             input.path().to_str().unwrap(), output.path().to_str().unwrap(),
             &["--subset-file", &gone],
-        )).unwrap();
-        let records = fastx::read_fasta(input.path().to_str().unwrap()).unwrap();
-        assert!(run(records, &args).is_err());
+        ) ).unwrap();
+        let records = fastx::read_fasta( input.path().to_str().unwrap() ).unwrap();
+        assert!( run(records, &args).is_err() );
     }
 
     #[test]
     fn test_run_bad_output_path_returns_err() {
         let input = make_fasta_tmp(&[(">r1", "AAAA")]);
-        let args  = ParsedCLIFlags::new(run_args(
+        let args  = ParsedCLIFlags::new( run_args(
             input.path().to_str().unwrap(), "/nonexistent_dir/output.fasta", &[],
-        )).unwrap();
-        let records = fastx::read_fasta(input.path().to_str().unwrap()).unwrap();
-        assert!(run(records, &args).is_err());
+        ) ).unwrap();
+        let records = fastx::read_fasta( input.path().to_str().unwrap() ).unwrap();
+        assert!( run(records, &args).is_err() );
     }
 }
