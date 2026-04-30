@@ -131,9 +131,9 @@ The binary does not define its own record struct; it uses `fastx::NameWithRange`
 - If neither `--subset-file`, `--start`, nor `--end` is provided, all records are copied unchanged and a warning is printed to stderr.
 - If `--start` or `--end` is present alongside `--subset-file`, the global range overrides any per-record ranges in the subset file.
 
-### `run()` flag-combination behaviour
+### `run()` flag-combination behavior
 
-| `--subset-file` | `--start`/`--end` | Behaviour |
+| `--subset-file` | `--start`/`--end` | Behavior |
 |---|---|---|
 | absent | absent | copy all records unchanged (warning to stderr) |
 | absent | present | apply global subsequence to all records |
