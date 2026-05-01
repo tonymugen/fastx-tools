@@ -11,7 +11,7 @@ Command-line tools for simple manipulation of FASTA and FASTQ sequence files. Cu
 Clone the repository and build a release binary:
 
 ```sh
-git clone <repository-url>
+git clone https://github.com/tonymugen/fastx-tools
 cd fastx-tools
 cargo install --path .
 ```
