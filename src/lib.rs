@@ -4,18 +4,21 @@
 //!
 
 
-/// wrap it all in a module
+/// Types and functions for reading, storing, and manipulating FASTA and FASTQ records.
 pub mod fastx {
     use std::collections::HashMap;
     use std::fs::File;
     use std::io::{BufRead, BufReader, Write};
 
-    /// Holds FASTA/FASTQ record name and sequence range (for subsetting).
+    /// Holds a FASTA/FASTQ record name and sequence range for per-record subsetting.
     #[derive(Debug)]
     pub struct NameWithRange {
+        /// Record header name, including the leading `>` or `@`.
         pub name:  String,
-        pub start: usize,    // inclusive
-        pub end:   usize,    // exclusive
+        /// Base-0 start position, inclusive.
+        pub start: usize,
+        /// Base-0 end position, exclusive.
+        pub end:   usize,
     }
 
     fn clamp_slice(s: &str, start: usize, end: usize) -> &str {
@@ -90,10 +93,9 @@ pub mod fastx {
         /// * `quality_scores` - The quality scores for this sequence
         /// * `sequence` - The nucleotide or amino acid sequence string
         ///
-        /// # Returns
+        /// # Errors
         ///
-        /// An `IndexedSequenceWithQuality` object or an error if the quality and sequence strings
-        /// are unequal in length.
+        /// Returns an error if `quality_scores` and `sequence` differ in length.
         pub fn new(original_index: u32, quality_scores: &str, sequence: &str) -> Result<IndexedSequenceWithQuality, String> {
             if quality_scores.len() != sequence.len() {
                 return Err( "Quality scores must be the same length as sequence".to_string() )
@@ -208,7 +210,7 @@ pub mod fastx {
         ///
         /// # Returns
         ///
-        /// A tuple containing a `FastxRecords` object with subsaets of any records present in the input list
+        /// A tuple containing a `FastxRecords` object with subsets of any records present in the input list
         /// and a list of names not found. An empty list returns an empty object. Record indexes
         /// still refer to the original file. Duplicate record names are removed in the
         /// `FastxRecords` object but not in the list of absent records.
@@ -238,10 +240,6 @@ pub mod fastx {
         ///
         /// * `from` - an object to merge
         ///
-        /// # Returns
-        ///
-        /// Any errors.
-        ///
         pub fn merge(&mut self, from: FastxRecords<T>) {
             self.max_sequence_length_ = self.max_sequence_length_.max(from.max_sequence_length_);
             self.records_.extend(from.records_);
@@ -253,9 +251,9 @@ pub mod fastx {
         ///
         /// * `output_path` - Path to a file
         ///
-        /// # Returns
+        /// # Errors
         ///
-        /// Any file write errors.
+        /// Returns an error if the file cannot be created or any record cannot be written.
         ///
         pub fn save_records(&self, output_path: &str) -> Result<(), String> {
             let mut file = File::create(output_path)
@@ -273,9 +271,9 @@ pub mod fastx {
         ///
         /// * `output_path` - Path to a file
         ///
-        /// # Returns
+        /// # Errors
         ///
-        /// Any file write errors.
+        /// Returns an error if the file cannot be created or any record cannot be written.
         ///
         pub fn save_sorted_records(&self, output_path: &str) -> Result<(), String> {
             let mut file = File::create(output_path)
@@ -296,9 +294,10 @@ pub mod fastx {
     ///
     /// * `fasta_path` - Path to a FASTA file
     ///
-    /// # Returns
+    /// # Errors
     ///
-    /// A `FastxRecords<IndexedSequence>` object or errors if the input file is inaccessible or invalid.
+    /// Returns an error if the file cannot be opened, any line cannot be read, or the file
+    /// contains no valid header+sequence pairs.
     ///
     pub fn read_fasta(fasta_path: &str) -> Result<FastxRecords<IndexedSequence>, String> {
         let mut local_records: HashMap<String, IndexedSequence> = HashMap::new();
@@ -341,9 +340,11 @@ pub mod fastx {
     ///
     /// * `fastq_path` - Path to a FASTQ file
     ///
-    /// # Returns
+    /// # Errors
     ///
-    /// A `FastxRecords<IndexedSequenceWithQuality>` object or errors if the input file is inaccessible or invalid.
+    /// Returns an error if the file cannot be opened, any record is malformed (missing lines,
+    /// non-`@` header, invalid `+` separator, or quality/sequence length mismatch), or the file
+    /// contains no valid records.
     ///
     pub fn read_fastq(fastq_path: &str) -> Result<FastxRecords<IndexedSequenceWithQuality>, String> {
         let mut local_records: HashMap<String, IndexedSequenceWithQuality> = HashMap::new();
